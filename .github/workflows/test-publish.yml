@@ -80,7 +80,7 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
 
           rm -rf /tmp/pkg-a && mkdir -p /tmp/pkg-a
-          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"provenance test\"}" > /tmp/pkg-a/package.json
+          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"provenance test\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-a/package.json
           echo "// BUILD-A: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
 
           echo "Content: $(cat /tmp/pkg-a/index.js)"
@@ -99,11 +99,11 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
 
           rm -rf /tmp/pkg-a && mkdir -p /tmp/pkg-a
-          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"variant A\"}" > /tmp/pkg-a/package.json
+          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"variant A\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-a/package.json
           echo "// VARIANT-A: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
 
           rm -rf /tmp/pkg-b && mkdir -p /tmp/pkg-b
-          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"variant B\"}" > /tmp/pkg-b/package.json
+          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"variant B\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-b/package.json
           echo "// VARIANT-B: $(openssl rand -hex 16)" > /tmp/pkg-b/index.js
 
           echo "A content: $(cat /tmp/pkg-a/index.js)"
