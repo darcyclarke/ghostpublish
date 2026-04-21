@@ -12,6 +12,7 @@ on:
           - s1-token-race
           - s2-token-vs-oidc
           - s3-token-vs-token-prov
+          - worst-case
         default: s1-token-race
       version_suffix:
         description: "Version suffix (leave empty for timestamp)"
@@ -107,3 +108,9 @@ jobs:
           TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
           source $GITHUB_WORKSPACE/scripts/ci-race.sh \
             "$VERSION" "$TOKEN" "false" "$TOKEN" "true" "concurrent" "0"
+
+      - name: "Worst case: dual provenance race (retries until both succeed)"
+        if: inputs.mode == 'worst-case'
+        run: |
+          TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
+          source $GITHUB_WORKSPACE/scripts/ci-worst-case.sh "$TOKEN" 20
