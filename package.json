@@ -1,0 +1,19 @@
+{
+  "name": "ghostpublish",
+  "version": "0.0.1",
+  "description": "publish testing",
+  "private": true,
+  "scripts": {
+    "setup": "bash scripts/setup.sh",
+    "test:publish": "bash scripts/test-publish.sh",
+    "test:install": "bash scripts/test-install.sh",
+    "test:monitor": "bash scripts/test-monitor.sh",
+    "test:provenance": "bash scripts/test-provenance.sh",
+    "test:canary": "bash scripts/test-canary.sh",
+    "test:cache": "bash scripts/test-cache.sh"
+  },
+  "author": {
+    "name": "darcyclarke",
+    "email": "darcy@darcyclarke.me"
+  }
+}
