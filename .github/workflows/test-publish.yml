@@ -10,11 +10,18 @@ on:
         options:
           - provenance-only
           - concurrent
+          - signed-first
+          - unsigned-first
         default: concurrent
       version_suffix:
         description: "Version suffix (leave empty for timestamp)"
         required: false
         type: string
+      delay:
+        description: "Stagger delay in seconds (for signed-first / unsigned-first)"
+        required: false
+        type: string
+        default: "2"
 
 permissions:
   id-token: write
@@ -97,109 +104,22 @@ jobs:
           NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" concurrent 0
 
-          rm -rf /tmp/pkg-a && mkdir -p /tmp/pkg-a
-          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"variant A\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-a/package.json
-          echo "// VARIANT-A: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
+      - name: "Mode: signed-first"
+        if: inputs.mode == 'signed-first'
+        env:
+          NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DELAY="${{ inputs.delay }}"
+          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" signed-first "${DELAY:-2}"
 
-          rm -rf /tmp/pkg-b && mkdir -p /tmp/pkg-b
-          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"variant B\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-b/package.json
-          echo "// VARIANT-B: $(openssl rand -hex 16)" > /tmp/pkg-b/index.js
-
-          echo "A content: $(cat /tmp/pkg-a/index.js)"
-          echo "B content: $(cat /tmp/pkg-b/index.js)"
-
-          A_INTEGRITY=$(cd /tmp/pkg-a && npm pack --json 2>/dev/null | jq -r '.[0].integrity')
-          B_INTEGRITY=$(cd /tmp/pkg-b && npm pack --json 2>/dev/null | jq -r '.[0].integrity')
-          rm -f /tmp/pkg-a/*.tgz /tmp/pkg-b/*.tgz
-          echo "A integrity: $A_INTEGRITY"
-          echo "B integrity: $B_INTEGRITY"
-
-          (cd /tmp/pkg-a && npm publish --access public --tag ci --no-provenance 2>&1 | tee /tmp/publish-a.log) &
-          PID_A=$!
-          (cd /tmp/pkg-b && npm publish --access public --tag ci --provenance 2>&1 | tee /tmp/publish-b.log) &
-          PID_B=$!
-
-          set +e
-          wait $PID_A; EXIT_A=$?
-          wait $PID_B; EXIT_B=$?
-          set -e
-
-          echo ""
-          echo "=== Results ==="
-          echo "A exit: $EXIT_A"
-          echo "B exit: $EXIT_B"
-          echo ""
-          echo "--- A output ---"
-          cat /tmp/publish-a.log
-          echo ""
-          echo "--- B output ---"
-          cat /tmp/publish-b.log
-          echo ""
-
-          A_OK=0; B_OK=0
-          [ $EXIT_A -eq 0 ] && A_OK=1
-          [ $EXIT_B -eq 0 ] && B_OK=1
-
-          if [ "$A_OK" -eq 1 ] && [ "$B_OK" -eq 1 ]; then
-            echo "BOTH SUCCEEDED"
-          elif [ "$A_OK" -eq 1 ]; then
-            echo "Only A succeeded"
-          elif [ "$B_OK" -eq 1 ]; then
-            echo "Only B succeeded"
-          else
-            echo "Both failed"
-          fi
-
-          sleep 10
-
-          echo ""
-          MANIFEST=$(curl -s "https://registry.npmjs.org/ghostpublish/${VERSION}")
-          M_INTEGRITY=$(echo "$MANIFEST" | jq -r '.dist.integrity // "null"')
-          M_SHASUM=$(echo "$MANIFEST" | jq -r '.dist.shasum // "null"')
-          echo "dist.integrity: $M_INTEGRITY"
-          echo "dist.shasum:    $M_SHASUM"
-
-          if [ "$M_SHASUM" != "null" ]; then
-            curl -sL "https://registry.npmjs.org/ghostpublish/-/ghostpublish-${VERSION}.tgz" -o /tmp/dl.tgz
-            T_SHA1=$(sha1sum /tmp/dl.tgz | cut -d' ' -f1)
-            T_INTEGRITY="sha512-$(sha512sum -b /tmp/dl.tgz | cut -d' ' -f1 | xxd -r -p | base64)"
-
-            echo "tarball sha1:      $T_SHA1"
-            echo "tarball integrity: $T_INTEGRITY"
-
-            [ "$M_SHASUM" = "$T_SHA1" ] && echo "SHA-1: MATCH" || echo "SHA-1: MISMATCH"
-            [ "$M_INTEGRITY" = "$T_INTEGRITY" ] && echo "SHA-512: MATCH" || echo "SHA-512: MISMATCH"
-
-            mkdir -p /tmp/ex && rm -rf /tmp/ex/*
-            tar xzf /tmp/dl.tgz -C /tmp/ex
-            echo "index.js: $(cat /tmp/ex/package/index.js)"
-            echo "description: $(jq -r .description /tmp/ex/package/package.json)"
-          fi
-
-          echo ""
-          ATTESTATIONS=$(curl -s "https://registry.npmjs.org/-/npm/v1/attestations/ghostpublish@${VERSION}")
-          echo "$ATTESTATIONS" | python3 -c "
-          import json, sys, base64
-          data = json.load(sys.stdin)
-          attestations = data.get('attestations', [])
-          if not attestations:
-            print(f'No attestations: {data.get(\"error\", \"none\")}')
-            sys.exit(0)
-          print(f'Attestations: {len(attestations)}')
-          hashes = set()
-          for i, a in enumerate(attestations):
-            pred_type = a.get('predicateType', 'N/A').split('/')[-1]
-            payload = a.get('bundle', {}).get('dsseEnvelope', {}).get('payload', '')
-            if payload:
-              pred = json.loads(base64.b64decode(payload))
-              for s in pred.get('subject', []):
-                for algo, digest in s.get('digest', {}).items():
-                  hashes.add(digest)
-                  print(f'  {i+1} [{pred_type}]: {algo}={digest[:40]}...')
-          print(f'Unique hashes: {len(hashes)}')
-          "
-
-          echo ""
-          echo "Manifest matches A: $([ "$M_INTEGRITY" = "$A_INTEGRITY" ] && echo 'YES' || echo 'NO')"
-          echo "Manifest matches B: $([ "$M_INTEGRITY" = "$B_INTEGRITY" ] && echo 'YES' || echo 'NO')"
+      - name: "Mode: unsigned-first"
+        if: inputs.mode == 'unsigned-first'
+        env:
+          NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DELAY="${{ inputs.delay }}"
+          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" unsigned-first "${DELAY:-2}"
