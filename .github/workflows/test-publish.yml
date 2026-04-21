@@ -9,22 +9,14 @@ on:
         type: choice
         options:
           - provenance-only
-          - concurrent
-          - a-first
-          - b-first
-          - dual-token
-          - dual-token-a-first
-          - dual-token-b-first
-        default: concurrent
+          - s1-token-race
+          - s2-token-vs-oidc
+          - s3-token-vs-token-prov
+        default: s1-token-race
       version_suffix:
         description: "Version suffix (leave empty for timestamp)"
         required: false
         type: string
-      delay:
-        description: "Stagger delay in seconds"
-        required: false
-        type: string
-        default: "2"
 
 permissions:
   id-token: write
@@ -42,7 +34,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Authenticate
-        id: oidc
+        id: auth
         run: |
           OIDC_TOKEN=$(curl -s -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" | jq -r '.value')
@@ -53,24 +45,19 @@ jobs:
           fi
           echo "OIDC token retrieved (${#OIDC_TOKEN} chars)"
 
-          echo "$OIDC_TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq '{
-            iss, aud, repository, repository_visibility,
-            workflow_ref, runner_environment, ref
-          }' || true
-
-          NPM_TOKEN=$(curl -s -X POST \
+          NPM_OIDC=$(curl -s -X POST \
             "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/ghostpublish" \
             -H "Authorization: Bearer ${OIDC_TOKEN}" \
             -H "Content-Type: application/json" | jq -r '.token')
 
-          if [ -z "$NPM_TOKEN" ] || [ "$NPM_TOKEN" = "null" ]; then
+          if [ -z "$NPM_OIDC" ] || [ "$NPM_OIDC" = "null" ]; then
             echo "::error::Failed to exchange OIDC token"
             exit 1
           fi
-          echo "npm token obtained"
+          echo "OIDC npm token obtained"
 
-          echo "::add-mask::${NPM_TOKEN}"
-          echo "npm_token=${NPM_TOKEN}" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::${NPM_OIDC}"
+          echo "oidc_token=${NPM_OIDC}" >> "$GITHUB_OUTPUT"
 
       - name: Version
         id: version
@@ -85,38 +72,38 @@ jobs:
       - name: "Mode: provenance-only"
         if: inputs.mode == 'provenance-only'
         env:
-          NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
+          NODE_AUTH_TOKEN: ${{ steps.auth.outputs.oidc_token }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-
           rm -rf /tmp/pkg-a && mkdir -p /tmp/pkg-a
           echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"test\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-a/package.json
           echo "// BUILD: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
-
           cd /tmp/pkg-a
           npm publish --access public --tag latest --provenance 2>&1
-
           sleep 5
           curl -s "https://registry.npmjs.org/-/npm/v1/attestations/ghostpublish@${VERSION}" | jq .
 
-      - name: "Mode: single-token"
-        if: inputs.mode == 'concurrent' || inputs.mode == 'a-first' || inputs.mode == 'b-first'
-        env:
-          NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
+      - name: "S1: Both granular tokens, no provenance"
+        if: inputs.mode == 's1-token-race'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          DELAY="${{ inputs.delay }}"
-          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" "${{ inputs.mode }}" "${DELAY:-2}"
+          TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
+          source $GITHUB_WORKSPACE/scripts/ci-race.sh \
+            "$VERSION" "$TOKEN" "false" "$TOKEN" "false" "concurrent" "0"
 
-      - name: "Mode: dual-token"
-        if: inputs.mode == 'dual-token' || inputs.mode == 'dual-token-a-first' || inputs.mode == 'dual-token-b-first'
-        env:
-          OIDC_TOKEN: ${{ steps.oidc.outputs.npm_token }}
-          GRANULAR_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+      - name: "S2: Granular token vs OIDC + provenance"
+        if: inputs.mode == 's2-token-vs-oidc'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          DELAY="${{ inputs.delay }}"
-          MODE="${{ inputs.mode }}"
-          MODE="${MODE#dual-token}"
-          [ -z "$MODE" ] && MODE="concurrent" || MODE="${MODE#-}"
-          source $GITHUB_WORKSPACE/scripts/ci-dual-token.sh "$VERSION" "$MODE" "${DELAY:-2}"
+          GRANULAR="${{ secrets.NPM_AUTH_TOKEN }}"
+          OIDC="${{ steps.auth.outputs.oidc_token }}"
+          source $GITHUB_WORKSPACE/scripts/ci-race.sh \
+            "$VERSION" "$GRANULAR" "false" "$OIDC" "true" "concurrent" "0"
+
+      - name: "S3: Granular token vs granular token + provenance"
+        if: inputs.mode == 's3-token-vs-token-prov'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
+          source $GITHUB_WORKSPACE/scripts/ci-race.sh \
+            "$VERSION" "$TOKEN" "false" "$TOKEN" "true" "concurrent" "0"
