@@ -14,6 +14,11 @@ on:
           - s3-token-vs-token-prov
           - worst-case
         default: s1-token-race
+      rounds:
+        description: "Number of rounds per test"
+        required: false
+        type: string
+        default: "5"
       version_suffix:
         description: "Version suffix (leave empty for timestamp)"
         required: false
@@ -26,6 +31,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -89,8 +95,9 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
+          ROUNDS="${{ inputs.rounds }}"
           source $GITHUB_WORKSPACE/scripts/ci-race.sh \
-            "$VERSION" "$TOKEN" "false" "$TOKEN" "false" "concurrent" "0"
+            "$VERSION" "$TOKEN" "false" "$TOKEN" "false" "concurrent" "0" "${ROUNDS:-5}"
 
       - name: "S2: Granular token vs OIDC + provenance"
         if: inputs.mode == 's2-token-vs-oidc'
@@ -98,19 +105,22 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           GRANULAR="${{ secrets.NPM_AUTH_TOKEN }}"
           OIDC="${{ steps.auth.outputs.oidc_token }}"
+          ROUNDS="${{ inputs.rounds }}"
           source $GITHUB_WORKSPACE/scripts/ci-race.sh \
-            "$VERSION" "$GRANULAR" "false" "$OIDC" "true" "concurrent" "0"
+            "$VERSION" "$GRANULAR" "false" "$OIDC" "true" "concurrent" "0" "${ROUNDS:-5}"
 
       - name: "S3: Granular token vs granular token + provenance"
         if: inputs.mode == 's3-token-vs-token-prov'
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
+          ROUNDS="${{ inputs.rounds }}"
           source $GITHUB_WORKSPACE/scripts/ci-race.sh \
-            "$VERSION" "$TOKEN" "false" "$TOKEN" "true" "concurrent" "0"
+            "$VERSION" "$TOKEN" "false" "$TOKEN" "true" "concurrent" "0" "${ROUNDS:-5}"
 
-      - name: "Worst case: dual provenance race (retries until both succeed)"
+      - name: "Worst case: dual provenance race (retries until both succeed with mismatch)"
         if: inputs.mode == 'worst-case'
         run: |
           TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
-          source $GITHUB_WORKSPACE/scripts/ci-worst-case.sh "$TOKEN" 30
+          ROUNDS="${{ inputs.rounds }}"
+          source $GITHUB_WORKSPACE/scripts/ci-worst-case.sh "$TOKEN" "${ROUNDS:-30}"
