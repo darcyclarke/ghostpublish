@@ -145,22 +145,24 @@ print(f'{len(attestations)}:{len(hashes)}')
     ATTEST_INFO="$ATTEST_COUNT"
   fi
 
-  if grep -q "Sigstore" /tmp/publish-b.log 2>/dev/null && [ $B_OK -eq 0 ]; then
+  if grep -qi "sigstore\|transparency log" /tmp/publish-b.log 2>/dev/null && [ $B_OK -eq 0 ]; then
     SIGSTORE_ORPHAN="yes"
     ORPHAN_SIGSTORE=$((ORPHAN_SIGSTORE+1))
   fi
-  if grep -q "Sigstore" /tmp/publish-a.log 2>/dev/null && [ $A_OK -eq 0 ]; then
+  if grep -qi "sigstore\|transparency log" /tmp/publish-a.log 2>/dev/null && [ $A_OK -eq 0 ]; then
     SIGSTORE_ORPHAN="yes"
     ORPHAN_SIGSTORE=$((ORPHAN_SIGSTORE+1))
   fi
 
   B_ERR="-"
   if [ $B_OK -eq 0 ]; then
-    B_ERR=$(grep -oP 'E\d{3}' /tmp/publish-b.log 2>/dev/null | head -1 || echo "-")
+    B_ERR=$(grep -oE 'E[0-9]{3}' /tmp/publish-b.log 2>/dev/null | head -1 || echo "-")
+    [ -z "$B_ERR" ] && B_ERR="-"
   fi
   A_ERR="-"
   if [ $A_OK -eq 0 ]; then
-    A_ERR=$(grep -oP 'E\d{3}' /tmp/publish-a.log 2>/dev/null | head -1 || echo "-")
+    A_ERR=$(grep -oE 'E[0-9]{3}' /tmp/publish-a.log 2>/dev/null | head -1 || echo "-")
+    [ -z "$A_ERR" ] && A_ERR="-"
   fi
 
   RESULT_LINE="R${R}: winner=${WINNER} | A=${EXIT_A}(${A_ERR}) B=${EXIT_B}(${B_ERR}) | integrity=${INTEGRITY_STATUS} | cdn=${CDN_VARIANT} | attest=${ATTEST_INFO} | orphan_sigstore=${SIGSTORE_ORPHAN}"
