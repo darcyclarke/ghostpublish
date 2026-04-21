@@ -2,6 +2,7 @@
   "name": "ghostpublish",
   "version": "0.0.1",
   "description": "publish testing",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "setup": "bash scripts/setup.sh",
