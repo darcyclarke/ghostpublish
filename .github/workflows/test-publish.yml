@@ -12,6 +12,9 @@ on:
           - concurrent
           - a-first
           - b-first
+          - dual-token
+          - dual-token-a-first
+          - dual-token-b-first
         default: concurrent
       version_suffix:
         description: "Version suffix (leave empty for timestamp)"
@@ -96,7 +99,7 @@ jobs:
           sleep 5
           curl -s "https://registry.npmjs.org/-/npm/v1/attestations/ghostpublish@${VERSION}" | jq .
 
-      - name: "Mode: dual"
+      - name: "Mode: single-token"
         if: inputs.mode == 'concurrent' || inputs.mode == 'a-first' || inputs.mode == 'b-first'
         env:
           NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
@@ -104,3 +107,16 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           DELAY="${{ inputs.delay }}"
           source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" "${{ inputs.mode }}" "${DELAY:-2}"
+
+      - name: "Mode: dual-token"
+        if: inputs.mode == 'dual-token' || inputs.mode == 'dual-token-a-first' || inputs.mode == 'dual-token-b-first'
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.npm_token }}
+          GRANULAR_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DELAY="${{ inputs.delay }}"
+          MODE="${{ inputs.mode }}"
+          MODE="${MODE#dual-token}"
+          [ -z "$MODE" ] && MODE="concurrent" || MODE="${MODE#-}"
+          source $GITHUB_WORKSPACE/scripts/ci-dual-token.sh "$VERSION" "$MODE" "${DELAY:-2}"
