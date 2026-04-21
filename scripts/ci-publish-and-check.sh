@@ -8,64 +8,61 @@ DELAY="${3:-0}"
 REPO_URL="https://github.com/darcyclarke/ghostpublish"
 PKG="ghostpublish"
 
-rm -rf /tmp/pkg-unsigned && mkdir -p /tmp/pkg-unsigned
-echo "{\"name\": \"$PKG\", \"version\": \"${VERSION}\", \"description\": \"variant unsigned\", \"repository\": {\"type\": \"git\", \"url\": \"$REPO_URL\"}}" > /tmp/pkg-unsigned/package.json
-echo "// UNSIGNED: $(openssl rand -hex 16)" > /tmp/pkg-unsigned/index.js
+rm -rf /tmp/pkg-a && mkdir -p /tmp/pkg-a
+echo "{\"name\": \"$PKG\", \"version\": \"${VERSION}\", \"description\": \"variant A\", \"repository\": {\"type\": \"git\", \"url\": \"$REPO_URL\"}}" > /tmp/pkg-a/package.json
+echo "// A: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
 
-rm -rf /tmp/pkg-signed && mkdir -p /tmp/pkg-signed
-echo "{\"name\": \"$PKG\", \"version\": \"${VERSION}\", \"description\": \"variant signed\", \"repository\": {\"type\": \"git\", \"url\": \"$REPO_URL\"}}" > /tmp/pkg-signed/package.json
-echo "// SIGNED: $(openssl rand -hex 16)" > /tmp/pkg-signed/index.js
+rm -rf /tmp/pkg-b && mkdir -p /tmp/pkg-b
+echo "{\"name\": \"$PKG\", \"version\": \"${VERSION}\", \"description\": \"variant B\", \"repository\": {\"type\": \"git\", \"url\": \"$REPO_URL\"}}" > /tmp/pkg-b/package.json
+echo "// B: $(openssl rand -hex 16)" > /tmp/pkg-b/index.js
 
-echo "Unsigned content: $(cat /tmp/pkg-unsigned/index.js)"
-echo "Signed content:   $(cat /tmp/pkg-signed/index.js)"
+echo "A: $(cat /tmp/pkg-a/index.js)"
+echo "B: $(cat /tmp/pkg-b/index.js)"
 echo "Mode: $MODE (delay: ${DELAY}s)"
 echo ""
 
-U_INTEGRITY=$(cd /tmp/pkg-unsigned && npm pack --json 2>/dev/null | jq -r '.[0].integrity')
-S_INTEGRITY=$(cd /tmp/pkg-signed && npm pack --json 2>/dev/null | jq -r '.[0].integrity')
-rm -f /tmp/pkg-unsigned/*.tgz /tmp/pkg-signed/*.tgz
-echo "Unsigned integrity: $U_INTEGRITY"
-echo "Signed integrity:   $S_INTEGRITY"
+A_INTEGRITY=$(cd /tmp/pkg-a && npm pack --json 2>/dev/null | jq -r '.[0].integrity')
+B_INTEGRITY=$(cd /tmp/pkg-b && npm pack --json 2>/dev/null | jq -r '.[0].integrity')
+rm -f /tmp/pkg-a/*.tgz /tmp/pkg-b/*.tgz
+echo "A integrity: $A_INTEGRITY"
+echo "B integrity: $B_INTEGRITY"
 echo ""
 
-launch_unsigned() {
-  (cd /tmp/pkg-unsigned && npm publish --access public --tag ci --no-provenance 2>&1 | tee /tmp/publish-unsigned.log)
+launch_a() {
+  (cd /tmp/pkg-a && npm publish --access public --tag ci --no-provenance 2>&1 | tee /tmp/publish-a.log)
 }
 
-launch_signed() {
-  (cd /tmp/pkg-signed && npm publish --access public --tag ci --provenance 2>&1 | tee /tmp/publish-signed.log)
+launch_b() {
+  (cd /tmp/pkg-b && npm publish --access public --tag ci --provenance 2>&1 | tee /tmp/publish-b.log)
 }
 
 set +e
 
 if [ "$MODE" = "concurrent" ]; then
-  echo "=== Launching both simultaneously ==="
-  launch_unsigned &
-  PID_U=$!
-  launch_signed &
-  PID_S=$!
-  wait $PID_U; EXIT_U=$?
-  wait $PID_S; EXIT_S=$?
+  launch_a &
+  PID_A=$!
+  launch_b &
+  PID_B=$!
+  wait $PID_A; EXIT_A=$?
+  wait $PID_B; EXIT_B=$?
 
-elif [ "$MODE" = "signed-first" ]; then
-  echo "=== Launching signed first, unsigned after ${DELAY}s ==="
-  launch_signed &
-  PID_S=$!
+elif [ "$MODE" = "b-first" ]; then
+  launch_b &
+  PID_B=$!
   sleep "$DELAY"
-  launch_unsigned &
-  PID_U=$!
-  wait $PID_S; EXIT_S=$?
-  wait $PID_U; EXIT_U=$?
+  launch_a &
+  PID_A=$!
+  wait $PID_B; EXIT_B=$?
+  wait $PID_A; EXIT_A=$?
 
-elif [ "$MODE" = "unsigned-first" ]; then
-  echo "=== Launching unsigned first, signed after ${DELAY}s ==="
-  launch_unsigned &
-  PID_U=$!
+elif [ "$MODE" = "a-first" ]; then
+  launch_a &
+  PID_A=$!
   sleep "$DELAY"
-  launch_signed &
-  PID_S=$!
-  wait $PID_U; EXIT_U=$?
-  wait $PID_S; EXIT_S=$?
+  launch_b &
+  PID_B=$!
+  wait $PID_A; EXIT_A=$?
+  wait $PID_B; EXIT_B=$?
 
 else
   echo "Unknown mode: $MODE"
@@ -75,27 +72,27 @@ fi
 set -e
 
 echo ""
-echo "=== Publish Results ==="
-echo "Unsigned exit: $EXIT_U"
-echo "Signed exit:   $EXIT_S"
+echo "=== Results ==="
+echo "A exit: $EXIT_A"
+echo "B exit: $EXIT_B"
 echo ""
-echo "--- Unsigned output ---"
-cat /tmp/publish-unsigned.log
+echo "--- A output ---"
+cat /tmp/publish-a.log
 echo ""
-echo "--- Signed output ---"
-cat /tmp/publish-signed.log
+echo "--- B output ---"
+cat /tmp/publish-b.log
 echo ""
 
-U_OK=0; S_OK=0
-[ $EXIT_U -eq 0 ] && U_OK=1
-[ $EXIT_S -eq 0 ] && S_OK=1
+A_OK=0; B_OK=0
+[ $EXIT_A -eq 0 ] && A_OK=1
+[ $EXIT_B -eq 0 ] && B_OK=1
 
-if [ "$U_OK" -eq 1 ] && [ "$S_OK" -eq 1 ]; then
+if [ "$A_OK" -eq 1 ] && [ "$B_OK" -eq 1 ]; then
   echo "BOTH SUCCEEDED"
-elif [ "$U_OK" -eq 1 ]; then
-  echo "Only unsigned succeeded"
-elif [ "$S_OK" -eq 1 ]; then
-  echo "Only signed succeeded"
+elif [ "$A_OK" -eq 1 ]; then
+  echo "Only A succeeded"
+elif [ "$B_OK" -eq 1 ]; then
+  echo "Only B succeeded"
 else
   echo "Both failed"
 fi
@@ -103,7 +100,6 @@ fi
 sleep 10
 
 echo ""
-echo "=== Registry State ==="
 MANIFEST=$(curl -s "https://registry.npmjs.org/$PKG/${VERSION}")
 M_INTEGRITY=$(echo "$MANIFEST" | jq -r '.dist.integrity // "null"')
 M_SHASUM=$(echo "$MANIFEST" | jq -r '.dist.shasum // "null"')
@@ -123,21 +119,11 @@ if [ "$M_SHASUM" != "null" ]; then
 
   mkdir -p /tmp/ex && rm -rf /tmp/ex/*
   tar xzf /tmp/dl.tgz -C /tmp/ex
-  WINNER_CONTENT=$(cat /tmp/ex/package/index.js)
-  echo "index.js: $WINNER_CONTENT"
+  echo "index.js: $(cat /tmp/ex/package/index.js)"
   echo "description: $(jq -r .description /tmp/ex/package/package.json)"
-
-  if echo "$WINNER_CONTENT" | grep -q "UNSIGNED"; then
-    echo ""
-    echo ">>> UNSIGNED TARBALL WON THE CDN <<<"
-  elif echo "$WINNER_CONTENT" | grep -q "SIGNED"; then
-    echo ""
-    echo ">>> SIGNED TARBALL WON THE CDN <<<"
-  fi
 fi
 
 echo ""
-echo "=== Attestations ==="
 ATTESTATIONS=$(curl -s "https://registry.npmjs.org/-/npm/v1/attestations/$PKG@${VERSION}")
 echo "$ATTESTATIONS" | python3 -c "
 import json, sys, base64
@@ -161,17 +147,5 @@ print(f'Unique hashes: {len(hashes)}')
 "
 
 echo ""
-echo "=== Analysis ==="
-echo "Manifest matches unsigned: $([ "$M_INTEGRITY" = "$U_INTEGRITY" ] && echo 'YES' || echo 'NO')"
-echo "Manifest matches signed:   $([ "$M_INTEGRITY" = "$S_INTEGRITY" ] && echo 'YES' || echo 'NO')"
-
-if [ "$M_SHASUM" != "null" ]; then
-  echo ""
-  if echo "$WINNER_CONTENT" | grep -q "UNSIGNED" && [ "$S_OK" -eq 1 ]; then
-    echo "SCENARIO: Unsigned tarball on CDN + signed publish also succeeded"
-    echo "  Attestations may reference the signed hash, but CDN serves unsigned content"
-  elif echo "$WINNER_CONTENT" | grep -q "SIGNED" && [ "$U_OK" -eq 1 ]; then
-    echo "SCENARIO: Signed tarball on CDN + unsigned publish also succeeded"
-    echo "  Manifest integrity may reference unsigned hash, mismatching the signed tarball"
-  fi
-fi
+echo "Manifest matches A: $([ "$M_INTEGRITY" = "$A_INTEGRITY" ] && echo 'YES' || echo 'NO')"
+echo "Manifest matches B: $([ "$M_INTEGRITY" = "$B_INTEGRITY" ] && echo 'YES' || echo 'NO')"

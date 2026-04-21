@@ -10,15 +10,15 @@ on:
         options:
           - provenance-only
           - concurrent
-          - signed-first
-          - unsigned-first
+          - a-first
+          - b-first
         default: concurrent
       version_suffix:
         description: "Version suffix (leave empty for timestamp)"
         required: false
         type: string
       delay:
-        description: "Stagger delay in seconds (for signed-first / unsigned-first)"
+        description: "Stagger delay in seconds"
         required: false
         type: string
         default: "2"
@@ -87,10 +87,8 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
 
           rm -rf /tmp/pkg-a && mkdir -p /tmp/pkg-a
-          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"provenance test\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-a/package.json
-          echo "// BUILD-A: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
-
-          echo "Content: $(cat /tmp/pkg-a/index.js)"
+          echo "{\"name\": \"ghostpublish\", \"version\": \"${VERSION}\", \"description\": \"test\", \"repository\": {\"type\": \"git\", \"url\": \"https://github.com/darcyclarke/ghostpublish\"}}" > /tmp/pkg-a/package.json
+          echo "// BUILD: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
 
           cd /tmp/pkg-a
           npm publish --access public --tag ci --provenance 2>&1
@@ -98,28 +96,11 @@ jobs:
           sleep 5
           curl -s "https://registry.npmjs.org/-/npm/v1/attestations/ghostpublish@${VERSION}" | jq .
 
-      - name: "Mode: concurrent"
-        if: inputs.mode == 'concurrent'
-        env:
-          NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" concurrent 0
-
-      - name: "Mode: signed-first"
-        if: inputs.mode == 'signed-first'
+      - name: "Mode: dual"
+        if: inputs.mode == 'concurrent' || inputs.mode == 'a-first' || inputs.mode == 'b-first'
         env:
           NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           DELAY="${{ inputs.delay }}"
-          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" signed-first "${DELAY:-2}"
-
-      - name: "Mode: unsigned-first"
-        if: inputs.mode == 'unsigned-first'
-        env:
-          NODE_AUTH_TOKEN: ${{ steps.oidc.outputs.npm_token }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          DELAY="${{ inputs.delay }}"
-          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" unsigned-first "${DELAY:-2}"
+          source $GITHUB_WORKSPACE/scripts/ci-publish-and-check.sh "$VERSION" "${{ inputs.mode }}" "${DELAY:-2}"
