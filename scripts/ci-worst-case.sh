@@ -2,7 +2,7 @@
 set -euo pipefail
 
 TOKEN="$1"
-MAX_ATTEMPTS="${2:-20}"
+MAX_ATTEMPTS="${2:-30}"
 
 REPO_URL="https://github.com/darcyclarke/ghostpublish"
 PKG="ghostpublish"
@@ -60,8 +60,13 @@ for ATTEMPT in $(seq 1 "$MAX_ATTEMPTS"); do
     echo "tarball sha1:      $T_SHA1"
     echo "tarball integrity: $T_INTEGRITY"
     echo ""
-    [ "$M_SHASUM" = "$T_SHA1" ] && echo "SHA-1: MATCH" || echo "SHA-1: MISMATCH"
-    [ "$M_INTEGRITY" = "$T_INTEGRITY" ] && echo "SHA-512: MATCH" || echo "SHA-512: MISMATCH"
+
+    SHA1_STATUS="MATCH"
+    SHA512_STATUS="MATCH"
+    [ "$M_SHASUM" != "$T_SHA1" ] && SHA1_STATUS="MISMATCH"
+    [ "$M_INTEGRITY" != "$T_INTEGRITY" ] && SHA512_STATUS="MISMATCH"
+    echo "SHA-1: $SHA1_STATUS"
+    echo "SHA-512: $SHA512_STATUS"
 
     mkdir -p /tmp/ex && rm -rf /tmp/ex/*
     tar xzf /tmp/dl.tgz -C /tmp/ex
@@ -97,11 +102,18 @@ if len(hashes) > 1:
   print('*** MULTIPLE HASHES — DUAL-PROVENANCE FINGERPRINT ***')
 "
 
-    echo ""
-    echo "=== WORST-CASE STATE ACHIEVED ==="
-    echo "Version: $VERSION"
-    echo "Attempt: $ATTEMPT"
-    exit 0
+    if [ "$SHA1_STATUS" = "MISMATCH" ] || [ "$SHA512_STATUS" = "MISMATCH" ]; then
+      echo ""
+      echo "=== WORST-CASE STATE ACHIEVED ==="
+      echo "Version: $VERSION"
+      echo "Attempt: $ATTEMPT"
+      exit 0
+    else
+      echo ""
+      echo "Both succeeded but integrity is consistent (no mismatch). Retrying..."
+      sleep 2
+      continue
+    fi
   fi
 
   echo "Race did not trigger, retrying..."
