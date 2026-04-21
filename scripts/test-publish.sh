@@ -52,9 +52,9 @@ log ""
 rm -f /tmp/ghost-tarball-a/*.tgz /tmp/ghost-tarball-b/*.tgz
 
 log "=== Racing two publishes ==="
-(cd /tmp/ghost-tarball-a && npm publish --access public --tag race 2>&1 | tee /tmp/ghost-publish-a.log) &
+(cd /tmp/ghost-tarball-a && npm publish --access public --tag latest 2>&1 | tee /tmp/ghost-publish-a.log) &
 PID_A=$!
-(cd /tmp/ghost-tarball-b && npm publish --access public --tag race 2>&1 | tee /tmp/ghost-publish-b.log) &
+(cd /tmp/ghost-tarball-b && npm publish --access public --tag latest 2>&1 | tee /tmp/ghost-publish-b.log) &
 PID_B=$!
 
 set +e

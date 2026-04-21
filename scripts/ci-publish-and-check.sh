@@ -29,11 +29,11 @@ echo "B integrity: $B_INTEGRITY"
 echo ""
 
 launch_a() {
-  (cd /tmp/pkg-a && npm publish --access public --tag ci --no-provenance 2>&1 | tee /tmp/publish-a.log)
+  (cd /tmp/pkg-a && npm publish --access public --tag latest --no-provenance 2>&1 | tee /tmp/publish-a.log)
 }
 
 launch_b() {
-  (cd /tmp/pkg-b && npm publish --access public --tag ci --provenance 2>&1 | tee /tmp/publish-b.log)
+  (cd /tmp/pkg-b && npm publish --access public --tag latest --provenance 2>&1 | tee /tmp/publish-b.log)
 }
 
 set +e

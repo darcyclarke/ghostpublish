@@ -91,7 +91,7 @@ jobs:
           echo "// BUILD: $(openssl rand -hex 16)" > /tmp/pkg-a/index.js
 
           cd /tmp/pkg-a
-          npm publish --access public --tag ci --provenance 2>&1
+          npm publish --access public --tag latest --provenance 2>&1
 
           sleep 5
           curl -s "https://registry.npmjs.org/-/npm/v1/attestations/ghostpublish@${VERSION}" | jq .
