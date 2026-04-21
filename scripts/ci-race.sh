@@ -123,7 +123,7 @@ echo "dist.shasum:    $M_SHASUM"
 if [ "$M_SHASUM" != "null" ]; then
   curl -sL "https://registry.npmjs.org/$PKG/-/$PKG-${VERSION}.tgz" -o /tmp/dl.tgz
   T_SHA1=$(sha1sum /tmp/dl.tgz | cut -d' ' -f1)
-  T_INTEGRITY="sha512-$(sha512sum -b /tmp/dl.tgz | cut -d' ' -f1 | xxd -r -p | base64)"
+  T_INTEGRITY="sha512-$(sha512sum -b /tmp/dl.tgz | cut -d' ' -f1 | xxd -r -p | base64 -w 0)"
 
   echo "tarball sha1:      $T_SHA1"
   echo "tarball integrity: $T_INTEGRITY"
