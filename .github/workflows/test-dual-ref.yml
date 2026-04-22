@@ -32,40 +32,9 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Exchange OIDC token
-        id: auth
-        run: |
-          echo "Git ref: $GITHUB_REF"
-          echo "Git SHA: $GITHUB_SHA"
-          echo "Variant: ${{ inputs.variant }}"
-          echo ""
-
-          OIDC_TOKEN=$(curl -s -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" | jq -r '.value')
-
-          if [ -z "$OIDC_TOKEN" ] || [ "$OIDC_TOKEN" = "null" ]; then
-            echo "::error::Failed to retrieve OIDC token"
-            exit 1
-          fi
-          echo "OIDC token retrieved (${#OIDC_TOKEN} chars)"
-
-          NPM_TOKEN=$(curl -s -X POST \
-            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/ghostpublish" \
-            -H "Authorization: Bearer ${OIDC_TOKEN}" \
-            -H "Content-Type: application/json" | jq -r '.token')
-
-          if [ -z "$NPM_TOKEN" ] || [ "$NPM_TOKEN" = "null" ]; then
-            echo "::error::Failed to exchange OIDC token for npm token"
-            exit 1
-          fi
-          echo "npm OIDC token obtained"
-
-          echo "::add-mask::${NPM_TOKEN}"
-          echo "npm_token=${NPM_TOKEN}" >> "$GITHUB_OUTPUT"
-
       - name: Publish with provenance
         env:
-          NODE_AUTH_TOKEN: ${{ steps.auth.outputs.npm_token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
         run: |
           VERSION="${{ inputs.version }}"
           VARIANT="${{ inputs.variant }}"
