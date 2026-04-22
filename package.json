@@ -11,7 +11,11 @@
     "test:monitor": "bash scripts/test-monitor.sh",
     "test:provenance": "bash scripts/test-provenance.sh",
     "test:canary": "bash scripts/test-canary.sh",
-    "test:cache": "bash scripts/test-cache.sh"
+    "test:cache": "bash scripts/test-cache.sh",
+    "test:integrity": "bash scripts/test-integrity.sh",
+    "test:scan": "bash scripts/test-scan.sh",
+    "test:publish-cache": "bash scripts/test-publish-cache.sh",
+    "test:dual-ref": "bash scripts/test-dual-ref.sh"
   },
   "author": {
     "name": "darcyclarke",

@@ -1,0 +1,141 @@
+name: Dual-Ref Provenance Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact version to publish (both refs must use the same value)"
+        required: true
+        type: string
+      variant:
+        description: "Variant label (A or B) — used to differentiate tarball content"
+        required: true
+        type: choice
+        options:
+          - A
+          - B
+        default: A
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Exchange OIDC token
+        id: auth
+        run: |
+          echo "Git ref: $GITHUB_REF"
+          echo "Git SHA: $GITHUB_SHA"
+          echo "Variant: ${{ inputs.variant }}"
+          echo ""
+
+          OIDC_TOKEN=$(curl -s -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org" | jq -r '.value')
+
+          if [ -z "$OIDC_TOKEN" ] || [ "$OIDC_TOKEN" = "null" ]; then
+            echo "::error::Failed to retrieve OIDC token"
+            exit 1
+          fi
+          echo "OIDC token retrieved (${#OIDC_TOKEN} chars)"
+
+          NPM_TOKEN=$(curl -s -X POST \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/ghostpublish" \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -H "Content-Type: application/json" | jq -r '.token')
+
+          if [ -z "$NPM_TOKEN" ] || [ "$NPM_TOKEN" = "null" ]; then
+            echo "::error::Failed to exchange OIDC token for npm token"
+            exit 1
+          fi
+          echo "npm OIDC token obtained"
+
+          echo "::add-mask::${NPM_TOKEN}"
+          echo "npm_token=${NPM_TOKEN}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ steps.auth.outputs.npm_token }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          VARIANT="${{ inputs.variant }}"
+
+          mkdir -p /tmp/pkg
+          cat > /tmp/pkg/package.json << EOF
+          {
+            "name": "ghostpublish",
+            "version": "${VERSION}",
+            "description": "dual-ref variant ${VARIANT} from ${GITHUB_REF} @ ${GITHUB_SHA}",
+            "repository": {"type": "git", "url": "https://github.com/darcyclarke/ghostpublish"},
+            "main": "index.js"
+          }
+          EOF
+          echo "// variant ${VARIANT} | ref=${GITHUB_REF} | sha=${GITHUB_SHA} | ts=$(date +%s%N)" > /tmp/pkg/index.js
+
+          cd /tmp/pkg
+          echo "=== Package contents ==="
+          cat package.json
+          echo ""
+          cat index.js
+          echo ""
+
+          echo "=== Publishing with --provenance ==="
+          npm publish --access public --tag dual-ref --provenance 2>&1
+
+          echo ""
+          echo "=== Post-publish ==="
+          echo "Waiting for propagation..."
+          sleep 10
+
+          echo "=== Manifest ==="
+          curl -s "https://registry.npmjs.org/ghostpublish/${VERSION}" | jq '{
+            version: .version,
+            shasum: .dist.shasum,
+            integrity: .dist.integrity,
+            tarball: .dist.tarball
+          }'
+
+          echo ""
+          echo "=== Attestations ==="
+          curl -s "https://registry.npmjs.org/-/npm/v1/attestations/ghostpublish@${VERSION}" | python3 -c "
+          import json, sys, base64
+          data = json.load(sys.stdin)
+          attestations = data.get('attestations', [])
+          print(f'Total attestations: {len(attestations)}')
+          hashes = set()
+          refs = set()
+          for i, a in enumerate(attestations):
+            pred_type = a.get('predicateType', 'N/A').split('/')[-1]
+            payload = a.get('bundle', {}).get('dsseEnvelope', {}).get('payload', '')
+            if payload:
+              pred = json.loads(base64.b64decode(payload))
+              # Extract subject hashes
+              for s in pred.get('subject', []):
+                for algo, digest in s.get('digest', {}).items():
+                  hashes.add(digest)
+                  print(f'  [{i+1}] {pred_type}: {algo}={digest[:40]}...')
+              # Extract git ref from buildDefinition or invocation
+              bd = pred.get('predicate', {}).get('buildDefinition', {})
+              rc = bd.get('resolvedDependencies', [])
+              for dep in rc:
+                uri = dep.get('uri', '')
+                if 'github.com' in uri:
+                  refs.add(uri)
+                  print(f'  [{i+1}] ref: {uri}')
+          print(f'Unique subject hashes: {len(hashes)}')
+          print(f'Unique git refs: {len(refs)}')
+          if len(hashes) > 1:
+            print('*** MULTIPLE HASHES DETECTED — DUAL-PROVENANCE FINGERPRINT ***')
+          if len(refs) > 1:
+            print('*** MULTIPLE GIT REFS DETECTED — CROSS-REF RACE ***')
+          " 2>&1 || echo "(attestation parse error)"
