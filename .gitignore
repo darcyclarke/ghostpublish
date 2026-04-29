@@ -1,8 +1,8 @@
-node_modules
-results/
 .npmrc
 .DS_Store
-context.md
+.claude/
 notes/
-integrity_errors_distinct.csv
 scan/
+node_modules/
+results/
+resources/

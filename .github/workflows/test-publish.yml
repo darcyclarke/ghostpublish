@@ -13,6 +13,7 @@ on:
           - s2-token-vs-oidc
           - s3-token-vs-token-prov
           - worst-case
+          - oidc-double-use
         default: s1-token-race
       rounds:
         description: "Number of rounds per test"
@@ -124,3 +125,11 @@ jobs:
           TOKEN="${{ secrets.NPM_AUTH_TOKEN }}"
           ROUNDS="${{ inputs.rounds }}"
           source $GITHUB_WORKSPACE/scripts/ci-worst-case.sh "$TOKEN" "${ROUNDS:-30}"
+
+      - name: "OIDC double-use: race two different versions with same OIDC NAT"
+        if: inputs.mode == 'oidc-double-use'
+        run: |
+          NAT="${{ steps.auth.outputs.oidc_token }}"
+          ROUNDS="${{ inputs.rounds }}"
+          chmod +x $GITHUB_WORKSPACE/scripts/ci-oidc-double-use.sh
+          $GITHUB_WORKSPACE/scripts/ci-oidc-double-use.sh "$NAT" "${ROUNDS:-3}"
