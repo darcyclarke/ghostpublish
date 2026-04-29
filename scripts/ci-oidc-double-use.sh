@@ -71,9 +71,12 @@ publish_with_nat() {
 
   local tgz="$outdir/package.tgz"
   local sha1 sha512_b64 integrity body_file
-  sha1=$(shasum -a 1 "$tgz" 2>/dev/null | awk '{print $1}' || sha1sum "$tgz" | awk '{print $1}')
-  sha512_b64=$(shasum -a 512 "$tgz" 2>/dev/null | awk '{print $1}' | xxd -r -p | base64 \
-                 || sha512sum "$tgz" | awk '{print $1}' | xxd -r -p | base64)
+  # base64 line-wraps by default on Linux; tr-strip newlines defensively.
+  # A wrapped integrity string broke the inline `node -e` JS string literal in
+  # the first run and silently caused the entire round to fail.
+  sha1=$( (shasum -a 1 "$tgz" 2>/dev/null || sha1sum "$tgz") | awk '{print $1}' )
+  sha512_b64=$( (shasum -a 512 "$tgz" 2>/dev/null || sha512sum "$tgz") \
+                  | awk '{print $1}' | xxd -r -p | base64 | tr -d '\n' )
   integrity="sha512-${sha512_b64}"
 
   body_file="$outdir/body.json"
