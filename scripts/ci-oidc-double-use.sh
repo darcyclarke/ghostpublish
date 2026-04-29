@@ -8,18 +8,35 @@
 # under concurrency.
 #
 # Inputs (positional):
-#   $1  — npm auth token (NAT) obtained from a previous OIDC exchange
-#   $2  — round count (default 3). Each round uses fresh OIDC tokens via re-exchange.
+#   $1  — npm auth token (NAT) obtained from a previous OIDC exchange (used as
+#         fallback if ACTIONS_ID_TOKEN_REQUEST_URL is unset; in CI, fresh tokens
+#         are minted per round).
+#   $2  — round count (default 30). The race is probabilistic — likely needs
+#         many rounds to either trigger or be confident it doesn't.
 #
 # Expected env (provided by GitHub Actions):
 #   ACTIONS_ID_TOKEN_REQUEST_URL, ACTIONS_ID_TOKEN_REQUEST_TOKEN
 #
 # Output: per-round outcome line + final summary tally.
+#
+# Statistical note: the auth-layer race (if it exists) likely fires in a much
+# narrower window than the manifest+CDN persistence race (~20% rate). The auth
+# check is a single token-store read+write, not a multi-system propagation,
+# so the window is milliseconds to tens of milliseconds. Likelier rates:
+#
+#   true rate 20%  →  P(0 bypasses in 15 rounds) =  3.5%   (very likely to trigger)
+#   true rate 5%   →  P(0 bypasses in 15 rounds) = 46.3%   (need ~30 rounds)
+#   true rate 1%   →  P(0 bypasses in 15 rounds) = 86%     (need ~100+ rounds)
+#
+# Default 30 rounds gives reasonable coverage if the rate is >=5%. For lower
+# expected rates, run multiple invocations or override $2 to a higher value.
+# A SINGLE bypass is the proof — even one observation across all rounds
+# definitively answers the question.
 
 set -euo pipefail
 
 NAT_INPUT="${1:-}"
-ROUNDS="${2:-3}"
+ROUNDS="${2:-30}"
 PKG="ghostpublish"
 REGISTRY="https://registry.npmjs.org"
 

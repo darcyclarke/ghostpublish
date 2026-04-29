@@ -132,4 +132,6 @@ jobs:
           NAT="${{ steps.auth.outputs.oidc_token }}"
           ROUNDS="${{ inputs.rounds }}"
           chmod +x $GITHUB_WORKSPACE/scripts/ci-oidc-double-use.sh
-          $GITHUB_WORKSPACE/scripts/ci-oidc-double-use.sh "$NAT" "${ROUNDS:-3}"
+          # Default to 30 rounds for this mode (race is probabilistic).
+          # Override via the `rounds` workflow input if needed.
+          $GITHUB_WORKSPACE/scripts/ci-oidc-double-use.sh "$NAT" "${ROUNDS:-30}"
